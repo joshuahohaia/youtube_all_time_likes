@@ -82,39 +82,63 @@ def clean_comment_text(text_str):
         
     return text_str
 
-def fetch_comment_likes(youtube, comment_ids):
-    comments_data = []
-    total = len(comment_ids)
+def fetch_comment_stats(youtube, df_takeout):
+    stats_data = []
     
-    print(f"Fetching details for {total} comments from YouTube API...")
+    # Split into Top-level comments and Replies
+    # Parent Comment ID is NaN/empty for top-level comments
+    top_level_df = df_takeout[df_takeout["Parent Comment ID"].isna() | (df_takeout["Parent Comment ID"] == "")]
+    reply_df = df_takeout[df_takeout["Parent Comment ID"].notna() & (df_takeout["Parent Comment ID"] != "")]
     
-    for i in range(0, total, 50):
-        batch = comment_ids[i:i+50]
-        ids_string = ",".join(batch)
-        print(f"  - Batch {i//50 + 1}/{(total//50)+1} ({len(batch)} items)")
-        
+    total_top = len(top_level_df)
+    total_reply = len(reply_df)
+    
+    print(f"Fetching stats for {total_top} top-level comments (Likes + Replies)...")
+    top_level_ids = top_level_df["Comment ID"].tolist()
+    for i in range(0, total_top, 50):
+        batch = top_level_ids[i:i+50]
+        try:
+            request = youtube.commentThreads().list(
+                part="snippet",
+                id=",".join(batch)
+            )
+            response = request.execute()
+            for item in response.get("items", []):
+                snippet = item["snippet"]
+                top_comment = snippet["topLevelComment"]["snippet"]
+                stats_data.append({
+                    "Comment ID": item["id"],
+                    "Likes": int(top_comment.get("likeCount", 0)),
+                    "Replies": int(snippet.get("totalReplyCount", 0)),
+                    "Published At": top_comment.get("publishedAt"),
+                    "Video ID": top_comment.get("videoId")
+                })
+        except Exception as e:
+            print(f"    Warning: API Error on top-level batch: {e}")
+
+    print(f"Fetching stats for {total_reply} replies (Likes only)...")
+    reply_ids = reply_df["Comment ID"].tolist()
+    for i in range(0, total_reply, 50):
+        batch = reply_ids[i:i+50]
         try:
             request = youtube.comments().list(
                 part="snippet",
-                id=ids_string,
-                textFormat="plainText"
+                id=",".join(batch)
             )
             response = request.execute()
-
             for item in response.get("items", []):
                 snippet = item["snippet"]
-                comments_data.append({
+                stats_data.append({
                     "Comment ID": item["id"],
                     "Likes": int(snippet.get("likeCount", 0)),
+                    "Replies": 0, # Replies to replies don't have a count in this API
                     "Published At": snippet.get("publishedAt"),
                     "Video ID": snippet.get("videoId")
                 })
-        except HttpError as e:
-            print(f"    Warning: API Error on batch: {e}")
         except Exception as e:
-            print(f"    Warning: Unexpected error: {e}")
+            print(f"    Warning: API Error on reply batch: {e}")
             
-    return pd.DataFrame(comments_data)
+    return pd.DataFrame(stats_data)
 
 def fetch_video_titles(youtube, video_ids):
     video_data = {}
@@ -144,7 +168,7 @@ def fetch_video_titles(youtube, video_ids):
 
 def generate_html_report(df, filename):
     # 'Video' column already contains the HTML link with the Title
-    html_df = df[["Likes", "Comment", "Video", "Published At"]].copy()
+    html_df = df[["Likes", "Replies", "Comment", "Video", "Published At"]].copy()
     
     pd.set_option('colheader_justify', 'center')
     
@@ -258,26 +282,16 @@ def main():
         print(f"Authentication Failed: {e}")
         sys.exit(1)
 
-    comment_ids = df_takeout["Comment ID"].tolist()
-    if not comment_ids:
-        print("No comments found to process.")
-        sys.exit(0)
-        
-    df_likes = fetch_comment_likes(youtube, comment_ids)
+    df_stats = fetch_comment_stats(youtube, df_takeout)
 
-    if not df_likes.empty:
-        final_df = pd.merge(df_takeout, df_likes, on="Comment ID", how="inner")
+    if not df_stats.empty:
+        final_df = pd.merge(df_takeout, df_stats, on="Comment ID", how="inner")
         final_df = final_df.sort_values("Likes", ascending=False)
 
         # Fix Video ID Merging Logic
-        # We might have Video ID_x (Takeout) and Video ID_y (API)
-        # We prefer API (y), but if null, use Takeout (x)
-        if "Video ID_y" in final_df.columns and "Video ID_x" in final_df.columns:
-            final_df["Video ID"] = final_df["Video ID_y"].fillna(final_df["Video ID_x"])
-        elif "Video ID_y" in final_df.columns:
-            final_df["Video ID"] = final_df["Video ID_y"]
-        elif "Video ID_x" in final_df.columns:
-            final_df["Video ID"] = final_df["Video ID_x"]
+        # We might have Video ID_y (API) and Video ID_x (Takeout)
+        if "Video ID_y" in final_df.columns:
+            final_df["Video ID"] = final_df["Video ID_y"].fillna(final_df.get("Video ID_x", ""))
         
         # Ensure we have strings and drop NaNs for URL generation
         final_df["Video ID"] = final_df["Video ID"].fillna("")
@@ -295,7 +309,7 @@ def main():
         if "Published At" in final_df.columns:
             final_df["Published At"] = pd.to_datetime(final_df["Published At"]).dt.strftime("%Y-%m-%d %H:%M")
 
-        display_df = final_df[["Likes", "Comment", "Video Title", "Published At"]].copy()
+        display_df = final_df[["Likes", "Replies", "Comment", "Video Title", "Published At"]].copy()
         
         print("\n" + "="*60)
         print("TOP 3 MOST LIKED COMMENTS")
