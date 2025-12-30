@@ -8,7 +8,8 @@ This project allows you to retrieve all your YouTube comments, fetch their real-
 
 - **Analyze History**: Parses your Google Takeout comment data.
 - **Real-time Likes**: Fetches the latest like counts directly from YouTube.
-- **Clickable Report**: Generates a clean HTML report with clickable video links.
+- **Video Titles**: Retrieves and displays the actual video titles.
+- **Interactive Report**: Generates a sortable, searchable, and filterable HTML report.
 - **Auto-Discovery**: Automatically finds your `comments.csv` file.
 
 ## Prerequisites
@@ -50,9 +51,12 @@ python analyze_takeout.py path/to/comments.csv
 
 ## Outputs
 
-- **Terminal**: Displays the top 10 most liked comments.
+- **Terminal**: Displays the top 3 most liked comments with full text.
 - **`my_comments_with_likes.csv`**: Full raw data export.
-- **`my_comments_with_likes.html`**: A formatted report with "Watch Video" links.
+- **`my_comments_with_likes.html`**: A modern, interactive report with:
+    - Sortable columns (Likes, Date, Video Title)
+    - Instant search/filter
+    - Clickable video links
 
 ## Privacy & Security
 
