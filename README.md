@@ -2,6 +2,8 @@
 
 This project allows you to retrieve all your YouTube comments, fetch their real-time like counts using the YouTube Data API v3, and sort them by popularity.
 
+![html screenshot](/media/html_screenshot.png)
+
 ## Features
 
 - **Analyze History**: Parses your Google Takeout comment data.
