@@ -302,7 +302,7 @@ def main():
         final_df["Video Title"] = final_df["Video ID"].map(video_titles_map).fillna("Unknown Video")
 
         final_df["Video"] = final_df.apply(
-            lambda x: f'<a href="https://www.youtube.com/watch?v={x["Video ID"]}" target="_blank">{x["Video Title"]}</a>', axis=1
+            lambda x: f'<a href="https://www.youtube.com/watch?v={x["Video ID"]}&lc={x["Comment ID"]}" target="_blank">{x["Video Title"]}</a>', axis=1
         )
 
         # Format Published At
