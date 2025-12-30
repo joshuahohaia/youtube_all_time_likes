@@ -54,17 +54,13 @@ def clean_comment_text(text_str):
     
     try:
         # Normalize: Google Takeout often uses double-double quotes ""text"" inside the CSV
-        # converting them to single double quotes makes it standard JSON-like
         normalized = str(text_str).replace('""', '"')
         
         # Regex to capture content inside "text":"..."
-        # We look for "text":" matches and capture until the next quote
-        # The (.*?) is non-greedy
         matches = re.findall(r'"text":"(.*?)"', normalized)
         
         if matches:
             full_text = " ".join(matches)
-            # Unescape newlines
             return full_text.replace('\\n', '\n')
             
     except Exception:
@@ -165,18 +161,29 @@ def main():
         final_df = pd.merge(df_takeout, df_likes, on="Comment ID", how="inner")
         final_df = final_df.sort_values("Like Count", ascending=False)
 
-        if "Video ID_y" in final_df.columns:
+        # Fix Video ID Merging Logic
+        # We might have Video ID_x (Takeout) and Video ID_y (API)
+        # We prefer API (y), but if null, use Takeout (x)
+        if "Video ID_y" in final_df.columns and "Video ID_x" in final_df.columns:
+            final_df["Video ID"] = final_df["Video ID_y"].fillna(final_df["Video ID_x"])
+        elif "Video ID_y" in final_df.columns:
             final_df["Video ID"] = final_df["Video ID_y"]
+        elif "Video ID_x" in final_df.columns:
+            final_df["Video ID"] = final_df["Video ID_x"]
         
-        final_df["Video URL"] = "https://www.youtube.com/watch?v=" + final_df["Video ID"].astype(str)
+        # Ensure we have strings and drop NaNs for URL generation
+        final_df["Video ID"] = final_df["Video ID"].fillna("")
+        final_df["Video URL"] = final_df["Video ID"].apply(
+            lambda x: f"https://www.youtube.com/watch?v={x}" if x else "N/A"
+        )
 
         display_df = final_df[["Like Count", "Cleaned Text", "Video URL", "Published At"]].copy()
         display_df["Cleaned Text"] = display_df["Cleaned Text"].str.slice(0, 75) + "..."
         
         print("\n" + "="*60)
-        print("TOP 10 MOST LIKED COMMENTS")
+        print("TOP 3 MOST LIKED COMMENTS")
         print("="*60)
-        print(display_df.head(10).to_string(index=False))
+        print(display_df.head(3).to_string(index=False))
         print("\n")
 
         final_df.to_csv("my_comments_with_likes.csv", index=False)
