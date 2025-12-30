@@ -56,13 +56,25 @@ def clean_comment_text(text_str):
     
     try:
         # Normalize: Google Takeout often uses double-double quotes ""text"" inside the CSV
+        # (Though pd.read_csv usually handles this, sometimes artifacts remain or we want to be safe)
         normalized = str(text_str).replace('""', '"')
         
-        # Regex to capture content inside "text":"..."
-        matches = re.findall(r'"text":"(.*?)"', normalized)
+        # Robust regex to capture content inside "text":"..." handling escaped quotes
+        # Matches "text":" followed by (anything that is NOT a quote OR an escaped char)* until "
+        matches = re.findall(r'"text":"((?:[^"\\]|\\.)*)"', normalized)
         
         if matches:
-            full_text = " ".join(matches)
+            # Unescape the captured JSON string content (e.g. \" -> ")
+            decoded_matches = []
+            for m in matches:
+                try:
+                    # simplistic unescape for common JSON escapes
+                    decoded = m.replace(r'\"', '"').replace(r'\\', '\\').replace(r'\/', '/')
+                    decoded_matches.append(decoded)
+                except:
+                    decoded_matches.append(m)
+            
+            full_text = " ".join(decoded_matches)
             return full_text.replace('\\n', '\n')
             
     except Exception:
@@ -104,11 +116,36 @@ def fetch_comment_likes(youtube, comment_ids):
             
     return pd.DataFrame(comments_data)
 
+def fetch_video_titles(youtube, video_ids):
+    video_data = {}
+    unique_ids = list(set([vid for vid in video_ids if vid])) # Remove empty/None
+    total = len(unique_ids)
+    
+    print(f"Fetching titles for {total} unique videos...")
+    
+    for i in range(0, total, 50):
+        batch = unique_ids[i:i+50]
+        ids_string = ",".join(batch)
+        
+        try:
+            request = youtube.videos().list(
+                part="snippet",
+                id=ids_string
+            )
+            response = request.execute()
+
+            for item in response.get("items", []):
+                video_data[item["id"]] = item["snippet"]["title"]
+                
+        except Exception as e:
+            print(f"    Warning: API Error fetching video titles: {e}")
+            
+    return video_data
+
 def generate_html_report(df, filename):
-    html_df = df[["Likes", "Comment", "Video URL", "Published At"]].copy()
-    html_df["Video URL"] = html_df["Video URL"].apply(
-        lambda x: f'<a href="{x}" target="_blank">Watch Video</a>'
-    )
+    # 'Video' column already contains the HTML link with the Title
+    html_df = df[["Likes", "Comment", "Video", "Published At"]].copy()
+    
     pd.set_option('colheader_justify', 'center')
     
     table_html = html_df.to_html(classes='table table-striped table-hover', escape=False, index=False, table_id="commentsTable")
@@ -236,21 +273,28 @@ def main():
         
         # Ensure we have strings and drop NaNs for URL generation
         final_df["Video ID"] = final_df["Video ID"].fillna("")
-        final_df["Video URL"] = final_df["Video ID"].apply(
-            lambda x: f"https://www.youtube.com/watch?v={x}" if x else "N/A"
+        
+        # Fetch Video Titles
+        video_ids = final_df["Video ID"].tolist()
+        video_titles_map = fetch_video_titles(youtube, video_ids)
+        final_df["Video Title"] = final_df["Video ID"].map(video_titles_map).fillna("Unknown Video")
+
+        final_df["Video"] = final_df.apply(
+            lambda x: f'<a href="https://www.youtube.com/watch?v={x["Video ID"]}" target="_blank">{x["Video Title"]}</a>', axis=1
         )
 
         # Format Published At
         if "Published At" in final_df.columns:
             final_df["Published At"] = pd.to_datetime(final_df["Published At"]).dt.strftime("%Y-%m-%d %H:%M")
 
-        display_df = final_df[["Likes", "Comment", "Video URL", "Published At"]].copy()
-        display_df["Comment"] = display_df["Comment"].str.slice(0, 75) + "..."
+        display_df = final_df[["Likes", "Comment", "Video Title", "Published At"]].copy()
         
         print("\n" + "="*60)
         print("TOP 3 MOST LIKED COMMENTS")
         print("="*60)
-        print(display_df.head(3).to_string(index=False))
+        # Set pandas options to show full text in terminal without truncation
+        with pd.option_context('display.max_colwidth', None, 'display.width', 2000):
+            print(display_df.head(3).to_string(index=False))
         print("\n")
 
         final_df.to_csv("my_comments_with_likes.csv", index=False)
