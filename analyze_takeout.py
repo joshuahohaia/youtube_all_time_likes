@@ -53,12 +53,20 @@ def clean_comment_text(text_str):
         return ""
     
     try:
-        # Pattern to match: "{""text"":""CONTENT""}"
-        pattern = r'""text"":""(.*?)""\}'
-        matches = re.findall(pattern, str(text_str))
+        # Normalize: Google Takeout often uses double-double quotes ""text"" inside the CSV
+        # converting them to single double quotes makes it standard JSON-like
+        normalized = str(text_str).replace('""', '"')
+        
+        # Regex to capture content inside "text":"..."
+        # We look for "text":" matches and capture until the next quote
+        # The (.*?) is non-greedy
+        matches = re.findall(r'"text":"(.*?)"', normalized)
+        
         if matches:
-            full_text = "".join(matches)
-            return full_text.replace('""', '"').replace('\\n', '\n')
+            full_text = " ".join(matches)
+            # Unescape newlines
+            return full_text.replace('\\n', '\n')
+            
     except Exception:
         pass
         
