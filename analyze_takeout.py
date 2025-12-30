@@ -4,6 +4,8 @@ import argparse
 import glob
 import re
 import pickle
+import pathlib
+import webbrowser
 import pandas as pd
 from typing import List, Optional
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -91,7 +93,7 @@ def fetch_comment_likes(youtube, comment_ids):
                 snippet = item["snippet"]
                 comments_data.append({
                     "Comment ID": item["id"],
-                    "Like Count": int(snippet.get("likeCount", 0)),
+                    "Likes": int(snippet.get("likeCount", 0)),
                     "Published At": snippet.get("publishedAt"),
                     "Video ID": snippet.get("videoId")
                 })
@@ -103,23 +105,84 @@ def fetch_comment_likes(youtube, comment_ids):
     return pd.DataFrame(comments_data)
 
 def generate_html_report(df, filename):
-    html_df = df[["Like Count", "Cleaned Text", "Video URL", "Published At"]].copy()
+    html_df = df[["Likes", "Comment", "Video URL", "Published At"]].copy()
     html_df["Video URL"] = html_df["Video URL"].apply(
         lambda x: f'<a href="{x}" target="_blank">Watch Video</a>'
     )
     pd.set_option('colheader_justify', 'center')
+    
+    table_html = html_df.to_html(classes='table table-striped table-hover', escape=False, index=False, table_id="commentsTable")
+    
     html_string = f"""
-    <html>
+    <!DOCTYPE html>
+    <html lang="en">
     <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>YouTube Comment Analysis</title>
+        <!-- Bootstrap 5 CSS -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
+        <!-- DataTables CSS -->
+        <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+        <style>
+            body {{
+                background-color: #f8f9fa;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }}
+            .container {{
+                background-color: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                margin-top: 50px;
+                margin-bottom: 50px;
+            }}
+            h1 {{
+                color: #212529;
+                text-align: center;
+                margin-bottom: 10px;
+                font-weight: bold;
+            }}
+            p.subtitle {{
+                text-align: center;
+                color: #6c757d;
+                margin-bottom: 30px;
+            }}
+            table.dataTable thead th {{
+                background-color: #212529;
+                color: white;
+            }}
+            .dataTables_filter input {{
+                border-radius: 20px;
+                padding: 5px 15px;
+            }}
+        </style>
     </head>
-    <body class="container mt-5">
-        <h1>My Top YouTube Comments</h1>
-        <p>Sorted by Likes</p>
-        <div class="table-responsive">
-            {html_df.to_html(classes='table table-striped table-hover', escape=False, index=False)}
+    <body>
+        <div class="container">
+            <h1>My Top YouTube Comments</h1>
+            <div class="table-responsive">
+                {table_html}
+            </div>
         </div>
+
+        <!-- jQuery -->
+        <script src="https://code.jquery.com/jquery-3.5.1.js"></script>
+        <!-- DataTables JS -->
+        <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+        
+        <script>
+            $(document).ready(function () {{
+                $('#commentsTable').DataTable({{
+                    "order": [[ 0, "desc" ]], // Sort by Likes (1st column) descending by default
+                    "pageLength": 25,
+                    "language": {{
+                        "search": "Search:"
+                    }}
+                }});
+            }});
+        </script>
     </body>
     </html>
     """
@@ -141,7 +204,7 @@ def main():
 
     print(f"Reading: {csv_path}")
     df_takeout = pd.read_csv(csv_path)
-    df_takeout['Cleaned Text'] = df_takeout['Comment Text'].apply(clean_comment_text)
+    df_takeout['Comment'] = df_takeout['Comment Text'].apply(clean_comment_text)
     print(f"Parsed {len(df_takeout)} comments.")
 
     try:
@@ -159,7 +222,7 @@ def main():
 
     if not df_likes.empty:
         final_df = pd.merge(df_takeout, df_likes, on="Comment ID", how="inner")
-        final_df = final_df.sort_values("Like Count", ascending=False)
+        final_df = final_df.sort_values("Likes", ascending=False)
 
         # Fix Video ID Merging Logic
         # We might have Video ID_x (Takeout) and Video ID_y (API)
@@ -177,8 +240,12 @@ def main():
             lambda x: f"https://www.youtube.com/watch?v={x}" if x else "N/A"
         )
 
-        display_df = final_df[["Like Count", "Cleaned Text", "Video URL", "Published At"]].copy()
-        display_df["Cleaned Text"] = display_df["Cleaned Text"].str.slice(0, 75) + "..."
+        # Format Published At
+        if "Published At" in final_df.columns:
+            final_df["Published At"] = pd.to_datetime(final_df["Published At"]).dt.strftime("%Y-%m-%d %H:%M")
+
+        display_df = final_df[["Likes", "Comment", "Video URL", "Published At"]].copy()
+        display_df["Comment"] = display_df["Comment"].str.slice(0, 75) + "..."
         
         print("\n" + "="*60)
         print("TOP 3 MOST LIKED COMMENTS")
@@ -191,7 +258,10 @@ def main():
         
         print("Success! Reports generated:")
         print(" -> my_comments_with_likes.csv")
-        print(" -> my_comments_with_likes.html")
+        
+        uri = pathlib.Path("my_comments_with_likes.html").resolve().as_uri()
+        print(f" -> {uri}")
+        webbrowser.open(uri)
     else:
         print("Failed to retrieve like counts. Check your API quota or connection.")
 
