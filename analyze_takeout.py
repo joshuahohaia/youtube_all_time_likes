@@ -170,7 +170,6 @@ def generate_html_report(df, filename):
                 background-color: white;
                 padding: 30px;
                 border-radius: 10px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
                 margin-top: 50px;
                 margin-bottom: 50px;
             }}
@@ -192,6 +191,15 @@ def generate_html_report(df, filename):
             .dataTables_filter input {{
                 border-radius: 20px;
                 padding: 5px 15px;
+            }}
+            .dataTables_wrapper {{
+                margin-top: 20px;
+            }}
+            /* Extra padding to prevent focus glow clipping */
+            div.dataTables_wrapper div.dataTables_filter, 
+            div.dataTables_wrapper div.dataTables_length {{
+                margin-bottom: 10px;
+                padding: 5px;
             }}
         </style>
     </head>
