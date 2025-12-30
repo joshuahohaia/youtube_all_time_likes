@@ -1,0 +1,8 @@
+.env
+token.pickle
+__pycache__/
+*.csv
+*.html
+*.zip
+client_secret_*.json
+takeout-*/
