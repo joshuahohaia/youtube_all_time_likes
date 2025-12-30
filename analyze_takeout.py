@@ -225,6 +225,11 @@ def generate_html_report(df, filename):
                 margin-bottom: 10px;
                 padding: 5px;
             }}
+            /* Specific width for Published At column */
+            #commentsTable th:nth-child(5), 
+            #commentsTable td:nth-child(5) {{
+                min-width: 120px;
+            }}
         </style>
     </head>
     <body>
