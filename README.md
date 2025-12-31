@@ -1,6 +1,6 @@
 # YouTube All-Time Likes Fetcher
 
-This project allows you to retrieve all your YouTube comments, fetch their real-time like counts using the YouTube Data API v3, and sort them by popularity.
+This project allows you to retrieve all your YouTube comments, fetch their real-time like counts and any replies using the YouTube Data API v3, and sort them by popularity.
 
 ![html screenshot](/media/html_screenshot.png)
 
